@@ -1,0 +1,102 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cw2_db}
+      POSTGRES_USER: ${POSTGRES_USER:-cw2_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cw2_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-cw2_user} -d ${POSTGRES_DB:-cw2_db}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build: .
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.development
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-cw2-dev-key-change-me}
+      DB_HOST: db
+      DB_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-cw2_db}
+      POSTGRES_USER: ${POSTGRES_USER:-cw2_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cw2_password}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      REDIS_CACHE_URL: redis://redis:6379/2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery_worker:
+    build: .
+    command: celery -A core.celery:app worker --loglevel=info
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.development
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-cw2-dev-key-change-me}
+      DB_HOST: db
+      DB_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-cw2_db}
+      POSTGRES_USER: ${POSTGRES_USER:-cw2_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cw2_password}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      REDIS_CACHE_URL: redis://redis:6379/2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery_beat:
+    build: .
+    command: celery -A core.celery:app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    environment:
+      DJANGO_SETTINGS_MODULE: core.settings.development
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-cw2-dev-key-change-me}
+      DB_HOST: db
+      DB_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-cw2_db}
+      POSTGRES_USER: ${POSTGRES_USER:-cw2_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cw2_password}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      REDIS_CACHE_URL: redis://redis:6379/2
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

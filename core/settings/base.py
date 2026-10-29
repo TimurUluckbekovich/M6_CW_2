@@ -10,12 +10,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = os.environ.get('SECRET_KEY')
 
-IS_PRODUCTION = os.getenv("PRODUCTION", "False").lower() == "true"
-
-if IS_PRODUCTION:
-    from core.settings.production import *
-else:
-    from core.settings.development import *
 
 THEME_APPS = [
     'jazzmin',
@@ -178,5 +172,47 @@ CKEDITOR_5_CONFIGS = {
     },
     'minimal': {
         'toolbar': ['bold', 'italic', 'link'],
+    },
+}
+
+# Redis: кэширование
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv(
+            "REDIS_CACHE_URL",
+            "redis://127.0.0.1:6379/2",
+        ),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+        "TIMEOUT": 60,
+    }
+}
+
+
+# Celery: асинхронные и периодические задачи
+CELERY_BROKER_URL = os.getenv(
+    "CELERY_BROKER_URL",
+    "redis://127.0.0.1:6379/0",
+)
+
+CELERY_RESULT_BACKEND = os.getenv(
+    "CELERY_RESULT_BACKEND",
+    "redis://127.0.0.1:6379/1",
+)
+
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+
+
+# Celery Beat: запуск задачи каждую минуту
+CELERY_BEAT_SCHEDULE = {
+    "clear-expired-cache-every-minute": {
+        "task": "apps.testapp.tasks.clear_expired_cache_task",
+        "schedule": 60.0,
     },
 }
